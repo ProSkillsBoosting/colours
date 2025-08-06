@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+  <title>Match the Colours</title>
+  <!-- Tailwind CSS CDN -->
+  <script src='https://cdn.tailwindcss.com'></script>
+  <!-- Animate.css for subtle animations -->
+  <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css'/>
+  <!-- Confetti library -->
+  <script src='https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js'></script>
+</head>
+<body class='min-h-screen flex flex-col items-center justify-start py-8 bg-gradient-to-br from-sky-100 via-rose-50 to-amber-50 text-gray-800'>
+  <h1 class='text-4xl font-extrabold tracking-tight mb-4 drop-shadow-lg'>Match the Colours</h1>
+
+  <!-- Info bar -->
+  <div id='info' class='mb-6 flex flex-wrap gap-6 items-center'>
+    <span id='progress' class='text-xl font-semibold'>0 / 9</span>
+    <span id='timer' class='text-xl font-semibold'>00:00</span>
+    <button id='resetBtn' class='px-4 py-2 bg-indigo-500 text-white rounded-xl shadow hover:bg-indigo-600 active:scale-95 transition'>New Game</button>
+  </div>
+
+  <!-- Game area -->
+  <div id='game' class='grid md:grid-cols-2 gap-12'>
+    <!-- Color boxes -->
+    <div id='boxes' class='grid grid-cols-3 gap-6 justify-items-center'></div>
+    <!-- Words -->
+    <div id='words' class='flex flex-col gap-4'></div>
+  </div>
+
+  <!-- Sounds -->
+  <audio id='beep' preload='auto' src='https://www.soundjay.com/buttons/sounds/button-3.mp3'></audio>
+  <audio id='oops' preload='auto' src='https://www.soundjay.com/buttons/sounds/button-10.mp3'></audio>
+  <audio id='tick' preload='auto' src='https://www.soundjay.com/clock/sounds/clock-tick-1.mp3'></audio>
+
+  <script>
+    // Colours list (9 total)
+    const COLORS = [
+      { name: 'red', tailwind: 'bg-red-500' },
+      { name: 'blue', tailwind: 'bg-blue-500' },
+      { name: 'green', tailwind: 'bg-green-500' },
+      { name: 'yellow', tailwind: 'bg-yellow-400' },
+      { name: 'purple', tailwind: 'bg-purple-500' },
+      { name: 'orange', tailwind: 'bg-orange-500' },
+      { name: 'black', tailwind: 'bg-black' },
+      { name: 'brown', tailwind: 'bg-amber-800' },
+      { name: 'pink', tailwind: 'bg-pink-400' },
+    ];
+
+    const boxesContainer = document.getElementById('boxes');
+    const wordsContainer = document.getElementById('words');
+    const progressEl = document.getElementById('progress');
+    const timerEl = document.getElementById('timer');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const tickSound = document.getElementById('tick');
+    tickSound.volume = 0.6; // louder background tick
+
+    let matchedCount = 0;
+    let startTime = null;
+    let timerInterval = null;
+
+    function shuffle(array) {
+      return array.sort(() => Math.random() - 0.5);
+    }
+
+    function createColourBox(colorObj) {
+      const div = document.createElement('div');
+      div.className = `color-box ${colorObj.tailwind} rounded-2xl w-28 h-28 shadow-lg transition transform active:scale-95`;
+      div.dataset.color = colorObj.name;
+      div.addEventListener('dragover', e => e.preventDefault());
+      div.addEventListener('drop', handleDrop);
+      div.addEventListener('click', handleClickBox);
+      return div;
+    }
+
+    function createWord(colorObj) {
+      const div = document.createElement('div');
+      div.className = 'word px-4 py-2 bg-white rounded-lg shadow cursor-move text-center select-none transition-all hover:bg-slate-50';
+      div.setAttribute('draggable', true);
+      div.dataset.color = colorObj.name;
+      div.textContent = colorObj.name.charAt(0).toUpperCase() + colorObj.name.slice(1);
+      div.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', colorObj.name);
+        setTimeout(() => div.classList.add('opacity-50'), 0);
+      });
+      div.addEventListener('dragend', () => div.classList.remove('opacity-50'));
+      div.addEventListener('click', () => {
+        selectedWord = div;
+        flash(div);
+      });
+      return div;
+    }
+
+    // Flash helper
+    function flash(el) {
+      el.classList.add('animate-pulse');
+      setTimeout(() => el.classList.remove('animate-pulse'), 600);
+    }
+
+    let selectedWord = null; // for touch/click fallback
+
+    function handleClickBox(e) {
+      if (selectedWord) {
+        const color = selectedWord.dataset.color;
+        if (color === e.currentTarget.dataset.color && !e.currentTarget.classList.contains('matched')) {
+          completeMatch(selectedWord, e.currentTarget);
+        } else {
+          document.getElementById('oops').play();
+          flash(selectedWord);
+        }
+        selectedWord = null;
+      }
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      const color = e.dataTransfer.getData('text/plain');
+      const box = e.currentTarget;
+      if (color === box.dataset.color && !box.classList.contains('matched')) {
+        const wordElem = document.querySelector(`.word[data-color='${color}']`);
+        completeMatch(wordElem, box);
+      } else {
+        document.getElementById('oops').play();
+      }
+    }
+
+    function completeMatch(wordElem, box) {
+      box.appendChild(wordElem);
+      wordElem.setAttribute('draggable', false);
+      box.classList.add('matched', 'ring-4', 'ring-green-500', 'animate__animated', 'animate__tada');
+      document.getElementById('beep').currentTime = 0;
+      document.getElementById('beep').play();
+      matchedCount++;
+      updateProgress();
+      if (matchedCount === COLORS.length) {
+        celebrate();
+      }
+    }
+
+    function updateProgress() {
+      progressEl.textContent = `${matchedCount} / ${COLORS.length}`;
+    }
+
+    function startTimer() {
+      startTime = Date.now();
+      timerInterval = setInterval(() => {
+        const diff = Math.floor((Date.now() - startTime) / 1000);
+        const mins = String(Math.floor(diff / 60)).padStart(2, '0');
+        const secs = String(diff % 60).padStart(2, '0');
+        timerEl.textContent = `${mins}:${secs}`;
+        // play tick (ensure it plays even after user interaction)
+        tickSound.currentTime = 0;
+        tickSound.play().catch(()=>{});
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+    }
+
+    function celebrate() {
+      stopTimer();
+      confetti({
+        particleCount: 600,
+        spread: 160,
+        origin: { y: 0.6 },
+      });
+      const timeTaken = timerEl.textContent;
+      setTimeout(() => alert(`Great job! You matched all colours in ${timeTaken}.`), 100);
+    }
+
+    function initGame() {
+      boxesContainer.innerHTML = '';
+      wordsContainer.innerHTML = '';
+      matchedCount = 0;
+      updateProgress();
+      stopTimer();
+      timerEl.textContent = '00:00';
+      selectedWord = null;
+
+      const shuffledBoxes = shuffle([...COLORS]);
+      const shuffledWords = shuffle([...COLORS]);
+      shuffledBoxes.forEach(c => boxesContainer.appendChild(createColourBox(c)));
+      shuffledWords.forEach(c => wordsContainer.appendChild(createWord(c)));
+
+      startTimer();
+    }
+
+    resetBtn.addEventListener('click', initGame);
+
+    // Require user interaction to start sounds; initial page load only sets up interface
+    // User clicks "New Game" to begin
+  </script>
+</body>
+</html>
