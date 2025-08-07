@@ -1,0 +1,4 @@
+echo > .nojekyll      # создаём пустой файл
+git add .nojekyll
+git commit -m "Disable Jekyll on GitHub Pages"
+git push
